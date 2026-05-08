@@ -8,7 +8,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN not set")
 
-# ==================== AGENT CONFIG ====================
+# ==================== AGENT ====================
 AGENT_PERCENT = {
     'Du': 7, 'Me': 7, 'Maxi': 7, 'Landon': 7, 'Lao': 7,
     'Mm': 10, 'Glo': 3
@@ -24,79 +24,139 @@ AGENT_ALIASES = {
     'glo': 'Glo', 'global': 'Glo', 'ဂလို': 'Glo'
 }
 
-# ==================== KEYWORD SLOTS ====================
-KEYWORD_SLOTS = {
-    # ပုံသေ အကွက်ရေ 10
-    'ပါဝါ': 10, 'ပဝ': 10, 'pw': 10, 'power': 10,
-    'နက္ခတ်': 10, 'nk': 10, 'နက': 10, 'နခ': 10,
-    'ဘရိတ်': 10, 'bk': 10,
-    'ထိပ်': 10, 'ထ': 10, 'top': 10, 't': 10,
-    'အပူးစုံ': 10, 'အပူး': 10, 'ပူး': 10,
-    'ဆယ်ပြည့်': 10, 'ဆယ်ပြည်': 10,
-    # ပုံသေ 20
-    'ညီကို': 20, 'ညီအကို': 20,
-    'ပတ်ပူး': 20, 'ပူးပို': 20, 'ထန': 20, 'ထပ': 20, 'ထိပ်ပိတ်': 20, 'ထိပ်နောက်': 20,
-    # ပုံသေ 19
-    'ပတ်သီး': 19, 'အပါ': 19, 'ပါ': 19, 'ch': 19, 'p': 19,
-    # ပုံသေ 25
-    'စမ': 25, 'စစ': 25, 'မမ': 25, 'စုံစုံ': 25, 'စုံမ': 25,
-    # ပုံသေ 50
-    'စုံဘရိတ်': 50, 'စုံbk': 50, 'မbk': 50, 'မဘရိတ်': 50,
-    # ပုံသေ 5
-    'စပူး': 5, 'စုံပူး': 5, 'မပူး': 5,
-}
+# ==================== CALCULATION ====================
+def get_numbers_count(text):
+    """Count 1-2 digit numbers in text"""
+    numbers = re.findall(r'\b\d{1,2}\b', text)
+    return len(numbers)
 
-def get_slots_from_text(text):
-    """Return (slot_count, is_r, direct_amount, r_amount) from text"""
-    text_lower = text.lower()
+def get_slots_and_amount(text, default_amount=0):
+    """
+    Returns (total_slots, amount_to_use) for a single bet expression
+    """
+    text_lower = text.lower().strip()
     
-    # Check for R
+    # Extract amount from this expression
+    amounts = re.findall(r'\b(\d{3,6})\b', text_lower)
+    amount = int(amounts[-1]) if amounts else default_amount
+    if amount == 0:
+        return 0, 0
+    
+    n = get_numbers_count(text_lower)
+    if n == 0:
+        return 0, 0
+    
+    # Check for R (reverse)
     is_r = bool(re.search(r'[rအာ]', text_lower))
     
-    # Extract amount
-    amounts = re.findall(r'\b(\d{3,6})\b', text_lower)
-    amounts = [int(a) for a in amounts if int(a) > 0]
-    
-    direct_amount = amounts[0] if len(amounts) > 0 else 0
-    r_amount = amounts[1] if len(amounts) > 1 else 0
-    
-    # Check each keyword
-    for kw, slots in KEYWORD_SLOTS.items():
-        if kw in text_lower:
-            return slots, is_r, direct_amount, r_amount
-    
-    # Check for ခွေပူး / ခပ
-    if re.search(r'ခွေပူး|အပူးပါ|ခပ', text_lower):
-        numbers = re.findall(r'\b\d{1,2}\b', text_lower)
-        n = len(numbers)
-        return (n * n), is_r, direct_amount, r_amount
-    
-    # Check for ခွေ
-    if re.search(r'ခွေ|အခွေ|ခ', text_lower):
-        numbers = re.findall(r'\b\d{1,2}\b', text_lower)
-        n = len(numbers)
-        if n >= 2:
-            return (n * (n - 1)), is_r, direct_amount, r_amount
-        return 0, is_r, direct_amount, r_amount
-    
-    # Check for ကပ် / ကို
-    if re.search(r'ကပ်|အကပ်|ကို', text_lower):
+    # === KEYWORD CHECK ===
+    # Pw / ပါဝါ (10)
+    if re.search(r'pw|ပဝ|ပါဝါ|power', text_lower):
+        slots = 10
+    # နက္ခတ် / Nk (10)
+    elif re.search(r'nk|နက|နခ|နက္ခတ်', text_lower):
+        slots = 10
+    # ပတ်သီး (19)
+    elif re.search(r'ပတ်|အပါ|ပါ|ch|p', text_lower):
+        slots = 19
+    # ပတ်ပူး (20)
+    elif re.search(r'ပတ်ပူး|ပူးပို|ထန|ထပ|ထိပ်ပိတ်|ထိပ်နောက်', text_lower):
+        slots = 20
+    # ထိပ် / Top / T (10)
+    elif re.search(r'ထိပ်|ထ|top|t', text_lower):
+        slots = 10
+    # ဘရိတ် / Bk (10)
+    elif re.search(r'ဘရိတ်|bk', text_lower):
+        slots = 10
+    # စုံဘရိတ် (50)
+    elif re.search(r'စုံဘရိတ်|စုံbk|မbk|စုံBk|မဘရိတ်', text_lower):
+        slots = 50
+    # စမ / စစ (25)
+    elif re.search(r'စမ|စစ|မမ|စုံစုံ|စုံမ', text_lower):
+        slots = 25
+    # စပူး (5)
+    elif re.search(r'စပူး|စုံပူး|မပူး', text_lower):
+        slots = 5
+    # အပူးစုံ / ပူး (10)
+    elif re.search(r'အပူးစုံ|အပူး|ပူး', text_lower):
+        slots = 10
+    # ဆယ်ပြည့် (10)
+    elif re.search(r'ဆယ်ပြည့်|ဆယ်ပြည်', text_lower):
+        slots = 10
+    # ညီကို (20)
+    elif re.search(r'ညီကို|ညီအကို', text_lower):
+        slots = 20
+    # ခွေပူး / ခပ (n x n)
+    elif re.search(r'ခွေပူး|အပူးပါ|ခပ', text_lower):
+        slots = n * n
+    # ခွေ (n x (n-1))
+    elif re.search(r'ခွေ|အခွေ|ခ', text_lower):
+        slots = n * (n - 1) if n >= 2 else 0
+    # ကပ် / ကို (a x b)
+    elif re.search(r'ကပ်|အကပ်|ကို', text_lower):
         groups = re.findall(r'\b(\d{2,})\b', text_lower)
         if len(groups) >= 2:
             a = len(groups[0])
             b = len(groups[1])
             slots = a * b
-            return slots, is_r, direct_amount, r_amount
+        else:
+            slots = 0
+    else:
+        # Default: direct bet
+        slots = n
     
-    # Default: direct bet
-    numbers = re.findall(r'\b\d{1,2}\b', text_lower)
-    n = len(numbers)
-    if n == 0:
-        return 0, is_r, direct_amount, r_amount
-    return n, is_r, direct_amount, r_amount
+    if slots == 0:
+        return 0, 0
+    
+    if is_r:
+        # R means multiply by 2
+        return slots * 2, amount
+    else:
+        return slots, amount
+
+
+def calculate_total_bet(text):
+    """
+    Calculate total bet from multi-line or single line text
+    Formula: (number_count × slot_per_keyword) × amount
+    """
+    text = text.strip()
+    if not text:
+        return 0
+    
+    total = 0
+    current_amount = 0
+    
+    # Split by newline first
+    lines = text.split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Check if this line has an amount (3-6 digits)
+        amounts_in_line = re.findall(r'\b(\d{3,6})\b', line)
+        if amounts_in_line:
+            current_amount = int(amounts_in_line[-1])
+        
+        # Split line by space, -, =, * for multiple bets
+        parts = re.split(r'[\s\-=\*]+', line)
+        
+        for part in parts:
+            part = part.strip()
+            if not part or part.isdigit():
+                continue
+            
+            slots, amt = get_slots_and_amount(part, current_amount)
+            if slots > 0 and amt > 0:
+                total += slots * amt
+    
+    return total
 
 
 def extract_agent(text):
+    """Extract agent from text (must appear as a separate word)"""
     words = text.lower().split()
     for w in words:
         if w in AGENT_ALIASES:
@@ -108,65 +168,7 @@ def get_cashback_percent(agent):
     return AGENT_PERCENT.get(agent, 7)
 
 
-def calculate_line(text):
-    """Calculate total amount for one bet line"""
-    text = text.strip()
-    if not text:
-        return 0
-    
-    # Extract amount from the line (last 3-6 digit number)
-    amounts = re.findall(r'\b(\d{3,6})\b', text)
-    if not amounts:
-        return 0
-    
-    line_amount = int(amounts[-1])
-    
-    # Split by space, -, =, * for multiple bets in one line
-    parts = re.split(r'[\s\-=\*]+', text)
-    
-    total = 0
-    for part in parts:
-        if part == '' or part.isdigit():
-            continue
-        slots, is_r, direct_amt, r_amt = get_slots_from_text(part)
-        if slots == 0:
-            continue
-        
-        if is_r and direct_amt > 0 and r_amt > 0:
-            # Both direct and R amounts present
-            total += (slots * direct_amt) + (slots * r_amt)
-        elif is_r:
-            total += slots * line_amount
-        else:
-            total += slots * line_amount
-    
-    return total
-
-
-def calculate_multiline(text):
-    """Calculate total for multiline bet (separated by newline)"""
-    lines = text.strip().split('\n')
-    total = 0
-    last_amount = 0
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        
-        # Check if this line has its own amount
-        amounts = re.findall(r'\b(\d{3,6})\b', line)
-        if amounts:
-            last_amount = int(amounts[-1])
-        
-        # Calculate this line
-        line_total = calculate_line(line)
-        total += line_total
-    
-    return total
-
-
-# ==================== BOT ====================
+# ==================== BOT HANDLERS ====================
 logging.basicConfig(level=logging.INFO)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -177,13 +179,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.username or user.first_name
     
-    # Check for agent
+    # Only respond if agent is present
     agent = extract_agent(text)
     if not agent:
         return
     
-    # Calculate total
-    total_bet = calculate_multiline(text)
+    total_bet = calculate_total_bet(text)
     if total_bet == 0:
         await update.message.reply_text("တွက်လို့မရပါ။ စာကြောင်းစစ်ပါ။")
         return
